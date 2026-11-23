@@ -34,7 +34,7 @@ func TestScanWithStockfishFindsARepeatedOpeningBlunder(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stockfish.Close()
-	handler := api.NewHandler(games, report, time.Now, engine.NewCache(stockfish))
+	handler := api.NewHandler(api.Config{Games: games, Report: report, Now: time.Now, Engine: engine.NewCache(stockfish)})
 	query := url.Values{"opponent": {"Sorglos, Hans"}, "myColor": {"white"}}
 
 	var body mistakesJSON

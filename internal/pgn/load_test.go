@@ -150,3 +150,23 @@ func TestSampleDatabaseLoadsAndMergesTheKingsIndianTransposition(t *testing.T) {
 		t.Errorf("node = %+v, want Be2 from 2 games", node)
 	}
 }
+
+func TestLoadReadsThePlayersRatings(t *testing.T) {
+	src := "[White \"A\"]\n[Black \"B\"]\n[WhiteElo \"2010\"]\n[BlackElo \"2105\"]\n[Result \"*\"]\n\n1. e4 *\n"
+
+	games, _ := load(t, src)
+
+	if games[0].WhiteElo != 2010 || games[0].BlackElo != 2105 {
+		t.Errorf("ratings = %d and %d, want 2010 and 2105", games[0].WhiteElo, games[0].BlackElo)
+	}
+}
+
+func TestLoadTreatsAMissingOrUnreadableRatingAsUnknown(t *testing.T) {
+	src := "[White \"A\"]\n[Black \"B\"]\n[WhiteElo \"?\"]\n[Result \"*\"]\n\n1. e4 *\n"
+
+	games, _ := load(t, src)
+
+	if games[0].WhiteElo != 0 || games[0].BlackElo != 0 {
+		t.Errorf("ratings = %d and %d, want 0 and 0", games[0].WhiteElo, games[0].BlackElo)
+	}
+}

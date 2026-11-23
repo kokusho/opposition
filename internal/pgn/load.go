@@ -3,11 +3,13 @@ package pgn
 
 import (
 	"io"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/corentings/chess/v2"
 
+	"opposition/internal/board"
 	"opposition/internal/core"
 )
 
@@ -56,18 +58,20 @@ func parseGame(raw string) (core.Game, error) {
 	parsed := chess.NewGame(fromPGN)
 
 	game := core.Game{
-		White:  parsed.GetTagPair("White"),
-		Black:  parsed.GetTagPair("Black"),
-		Date:   parseDate(parsed.GetTagPair("Date")),
-		Result: parseResult(parsed.GetTagPair("Result")),
+		White:    parsed.GetTagPair("White"),
+		Black:    parsed.GetTagPair("Black"),
+		WhiteElo: parseRating(parsed.GetTagPair("WhiteElo")),
+		BlackElo: parseRating(parsed.GetTagPair("BlackElo")),
+		Date:     parseDate(parsed.GetTagPair("Date")),
+		Result:   parseResult(parsed.GetTagPair("Result")),
 	}
 
 	moves := parsed.Moves()
 	positions := parsed.Positions()
 	game.Plies = make([]core.Ply, 0, len(moves))
-	before := positionKey(positions[0])
+	before := board.Key(positions[0])
 	for i, move := range moves {
-		after := positionKey(positions[i+1])
+		after := board.Key(positions[i+1])
 		game.Plies = append(game.Plies, core.Ply{
 			Before: before,
 			SAN:    chess.AlgebraicNotation{}.Encode(positions[i], move),
@@ -77,6 +81,15 @@ func parseGame(raw string) (core.Game, error) {
 		before = after
 	}
 	return game, nil
+}
+
+// parseRating reads an Elo tag; anything but a positive number is unknown (0).
+func parseRating(tag string) int {
+	rating, err := strconv.Atoi(strings.TrimSpace(tag))
+	if err != nil || rating < 0 {
+		return 0
+	}
+	return rating
 }
 
 func parseResult(tag string) core.Result {
@@ -89,13 +102,6 @@ func parseResult(tag string) core.Result {
 		return core.Draw
 	}
 	return core.ResultUnknown
-}
-
-// positionKey reduces a position to the first four X-FEN fields, dropping the
-// move counters so that transpositions share a key.
-func positionKey(pos *chess.Position) string {
-	fields := strings.Fields(pos.XFENString())
-	return strings.Join(fields[:4], " ")
 }
 
 // toUTF8 returns text unchanged if it is valid UTF-8 and otherwise reads it

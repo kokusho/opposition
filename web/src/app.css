@@ -431,3 +431,15 @@ button.mistake:focus-visible {
 .mistake-reply {
   font-size: 0.9rem;
 }
+
+input.rating {
+  width: 6.5em;
+}
+
+h2 + .table-scroll {
+  margin-top: 6px;
+}
+
+.tree-column h2:not(:first-of-type) {
+  margin-top: 24px;
+}

@@ -4,14 +4,18 @@
     fetchAnalysis,
     fetchDatabase,
     fetchMistakes,
+    fetchMoves,
     fetchNode,
+    fetchPredictions,
     searchPlayers,
     type Analysis,
     type Color,
     type Database,
+    type LegalMoves,
     type Mistake,
-    type Move,
+    type Playable,
     type Player,
+    type Prediction,
     type Scan,
     type Step,
     type TreeNode,
@@ -27,6 +31,21 @@
   /** Centipawns a move must give away to be marked in the table. */
   const notableLoss = 50
 
+  /** Predicted moves are listed down to this probability, at most this many. */
+  const leastLikelyShown = 0.02
+  const mostPredictionsShown = 8
+
+  const myRatingKey = 'opposition.myRating'
+
+  function rememberedRating(): number | undefined {
+    try {
+      const stored = Number(localStorage.getItem(myRatingKey))
+      return stored >= 100 && stored <= 4000 ? stored : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   let database = $state<Database>()
   let query = $state('')
   let suggestions = $state<Player[]>([])
@@ -38,11 +57,31 @@
   let analysis = $state<Analysis>()
   let scan = $state<Scan>()
   let scanning = $state(false)
+  let legal = $state<LegalMoves>()
+  let prediction = $state<Prediction>()
+  let theirRating = $state(1500)
+  let myRating = $state(rememberedRating() ?? 1500)
+  let myRatingChosen = rememberedRating() !== undefined
   let error = $state('')
 
   const current = $derived(line.at(-1))
   const opponentColor = $derived<Color>(myColor === 'white' ? 'black' : 'white')
   const surname = $derived(opponent?.name.split(',')[0] ?? '')
+  // Any legal move can be played on the board, not only those in the database.
+  const boardMoves = $derived<Playable[]>(
+    node && legal?.position === node.position ? legal.moves : (node?.moves ?? []),
+  )
+  const ratingsUsable = $derived(
+    [theirRating, myRating].every((rating) => Number.isFinite(rating) && rating >= 100 && rating <= 4000),
+  )
+  const predicted = $derived(
+    prediction && node && prediction.position === node.position
+      ? prediction.moves.filter(
+          (move, rank) => rank < mostPredictionsShown && move.probability >= leastLikelyShown,
+        )
+      : undefined,
+  )
+  const played = $derived(new Map((node?.moves ?? []).map((move) => [move.uci, move])))
   const analysed = $derived(
     analysis && node && analysis.position === node.position
       ? new Map(analysis.moves.map((move) => [move.uci, move]))
@@ -97,6 +136,34 @@
     return () => (stale = true)
   })
 
+  // The legal moves of the current position, so the board can leave the database.
+  $effect(() => {
+    if (!opponent) {
+      legal = undefined
+      return
+    }
+    let stale = false
+    fetchMoves(current?.position).then(
+      (loaded) => !stale && (legal = loaded),
+      (reason) => !stale && (error = reason.message),
+    )
+    return () => (stale = true)
+  })
+
+  // What a player of the opponent's rating usually does where it is their move.
+  $effect(() => {
+    if (!database?.predictions || !node || node.mover !== 'opponent' || !ratingsUsable) {
+      prediction = undefined
+      return
+    }
+    let stale = false
+    fetchPredictions(node.position, theirRating, myRating).then(
+      (loaded) => !stale && (prediction = loaded),
+      (reason) => !stale && (error = reason.message),
+    )
+    return () => (stale = true)
+  })
+
   // A scan belongs to one opponent, colour and half-life. Changing any of
   // them drops it; while one is running, poll for its progress.
   $effect(() => {
@@ -138,6 +205,17 @@
     opponent = player
     query = player.name
     line = []
+    theirRating = player.rating ?? 1500
+    if (!myRatingChosen) myRating = theirRating
+  }
+
+  function chooseMyRating() {
+    myRatingChosen = true
+    try {
+      localStorage.setItem(myRatingKey, String(myRating))
+    } catch {
+      // Without storage the rating simply is not remembered.
+    }
   }
 
   function clearOpponent() {
@@ -151,7 +229,7 @@
     line = []
   }
 
-  function play(move: Move) {
+  function play(move: Playable) {
     line = [...line, { san: move.san, uci: move.uci, position: move.position }]
   }
 
@@ -240,6 +318,26 @@
       {/each}
     </select>
   </div>
+
+  {#if database?.predictions}
+    <div class="field" title="Used to predict moves. The model works in Lichess blitz ratings, which tend to run higher than over-the-board Elo.">
+      <label for="their-rating">Their rating</label>
+      <input id="their-rating" class="rating" type="number" min="100" max="4000" step="50" bind:value={theirRating} />
+    </div>
+    <div class="field" title="Used to predict moves. The model works in Lichess blitz ratings, which tend to run higher than over-the-board Elo.">
+      <label for="my-rating">Your rating</label>
+      <input
+        id="my-rating"
+        class="rating"
+        type="number"
+        min="100"
+        max="4000"
+        step="50"
+        bind:value={myRating}
+        onchange={chooseMyRating}
+      />
+    </div>
+  {/if}
 </section>
 
 {#if error}
@@ -253,7 +351,7 @@
         position={node.position}
         orientation={myColor}
         sideToMove={node.sideToMove}
-        moves={node.moves}
+        moves={boardMoves}
         lastMove={current?.uci}
         onmove={play}
       />
@@ -368,6 +466,58 @@
         </p>
       {:else}
         <p>No game in the database continues from here.</p>
+      {/if}
+
+      {#if database?.predictions && node.mover === 'opponent'}
+        <h2>What a {theirRating}-rated player usually plays here</h2>
+        {#if !ratingsUsable}
+          <p class="muted">Enter both ratings (100 to 4000) to see predictions.</p>
+        {:else if !predicted || !prediction}
+          <p class="muted">Predicting…</p>
+        {:else if predicted.length === 0}
+          <p>The game is over in this position.</p>
+        {:else}
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Move</th>
+                  <th>Likelihood</th>
+                  <th>In {surname}'s games</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each predicted as move (move.uci)}
+                  {@const known = played.get(move.uci)}
+                  <tr onclick={() => play(move)}>
+                    <td>
+                      <button class="move">{numbered(line.length, move.san, true)}</button>
+                    </td>
+                    <td>
+                      <div class="frequency">
+                        <div class="bar"><div class="fill" style:width={percent(move.probability)}></div></div>
+                        <span>{percent(move.probability)}</span>
+                      </div>
+                    </td>
+                    <td class:muted={!known}>
+                      {#if known}
+                        {known.games} {known.games === 1 ? 'game' : 'games'}
+                      {:else}
+                        never
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <p class="muted hint">
+            Predicted by Maia-3 for a {theirRating}-rated player facing {myRating}. It models the
+            rating, not {opponent.name} personally, and sees only this position, not the moves before
+            it. Typical result at these ratings from here: {surname} wins {percent(prediction.win)},
+            draw {percent(prediction.draw)}, loses {percent(prediction.loss)}.
+          </p>
+        {/if}
       {/if}
     </div>
   </main>

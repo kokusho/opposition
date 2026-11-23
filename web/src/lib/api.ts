@@ -5,11 +5,41 @@ export interface Database {
   skipped: { number: number; reason: string }[]
   /** Whether engine evaluations and the mistake scan are available. */
   engine: boolean
+  /** Whether human-move predictions (Maia) are available. */
+  predictions: boolean
 }
 
 export interface Player {
   name: string
   games: number
+  /** Rating from the player's most recent game that states one. */
+  rating?: number
+}
+
+/** A move that can be made on the board, with the position it leads to. */
+export interface Playable {
+  san: string
+  uci: string
+  position: string
+}
+
+export interface LegalMoves {
+  position: string
+  moves: Playable[]
+}
+
+/** What a model expects a human of a given rating to do in a position. */
+export interface Prediction {
+  position: string
+  /** Rating of the side to move and of the other player. */
+  selfElo: number
+  oppoElo: number
+  /** Predicted result for the side to move; the three add up to 1. */
+  win: number
+  draw: number
+  loss: number
+  /** Every legal move, most likely first. */
+  moves: (Playable & { probability: number })[]
 }
 
 /** One move played from a position. Wins, draws, losses and score are the opponent's. */
@@ -146,4 +176,14 @@ export function fetchAnalysis(
 /** Starts the scan on the first call and reports its progress on later ones. */
 export function fetchMistakes(opponent: string, myColor: Color, halfLifeYears: number): Promise<Scan> {
   return get('/api/v1/mistakes', { opponent, myColor, halfLifeYears: String(halfLifeYears) })
+}
+
+/** The legal moves of a position (the start position when omitted). */
+export function fetchMoves(position?: string): Promise<LegalMoves> {
+  return get('/api/v1/moves', position ? { position } : {})
+}
+
+/** selfElo is the rating of the side to move, oppoElo of the other player. */
+export function fetchPredictions(position: string, selfElo: number, oppoElo: number): Promise<Prediction> {
+  return get('/api/v1/predictions', { position, selfElo: String(selfElo), oppoElo: String(oppoElo) })
 }

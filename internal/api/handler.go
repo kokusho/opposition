@@ -19,25 +19,47 @@ const (
 	year                 = time.Duration(365.25 * 24 * float64(time.Hour))
 )
 
-type handler struct {
-	games  []core.Game
-	report pgn.Report
-	now    func() time.Time
-	engine core.Evaluator // nil when no engine is available
-	scans  *scans
+// Config is everything the API serves from.
+type Config struct {
+	Games  []core.Game
+	Report pgn.Report
+	// Now supplies the date that game ages are measured from.
+	Now func() time.Time
+	// Engine evaluates positions. Nil means no engine: the endpoints that
+	// need one answer 503.
+	Engine core.Evaluator
+	// Predictor guesses human moves. Nil means no model: the predictions
+	// endpoint answers 503.
+	Predictor core.Predictor
 }
 
-// NewHandler serves the API for one loaded database. now supplies the date
-// that game ages are measured from. engine may be nil, in which case the
-// endpoints that need one answer 503.
-func NewHandler(games []core.Game, report pgn.Report, now func() time.Time, engine core.Evaluator) http.Handler {
-	h := &handler{games: games, report: report, now: now, engine: engine, scans: newScans()}
+type handler struct {
+	games     []core.Game
+	report    pgn.Report
+	now       func() time.Time
+	engine    core.Evaluator
+	predictor core.Predictor
+	scans     *scans
+}
+
+// NewHandler serves the API for one loaded database.
+func NewHandler(config Config) http.Handler {
+	h := &handler{
+		games:     config.Games,
+		report:    config.Report,
+		now:       config.Now,
+		engine:    config.Engine,
+		predictor: config.Predictor,
+		scans:     newScans(),
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/database", h.database)
 	mux.HandleFunc("GET /api/v1/players", h.players)
 	mux.HandleFunc("GET /api/v1/tree", h.tree)
+	mux.HandleFunc("GET /api/v1/moves", h.moves)
 	mux.HandleFunc("GET /api/v1/analysis", h.analysis)
 	mux.HandleFunc("GET /api/v1/mistakes", h.mistakes)
+	mux.HandleFunc("GET /api/v1/predictions", h.predictions)
 	return mux
 }
 
@@ -51,7 +73,14 @@ func (h *handler) database(w http.ResponseWriter, _ *http.Request) {
 		Skipped []skipped `json:"skipped"`
 		// Engine says whether evaluations and the mistake scan are available.
 		Engine bool `json:"engine"`
-	}{Games: h.report.Games, Skipped: make([]skipped, 0, len(h.report.Skipped)), Engine: h.engine != nil}
+		// Predictions says whether human-move predictions are available.
+		Predictions bool `json:"predictions"`
+	}{
+		Games:       h.report.Games,
+		Skipped:     make([]skipped, 0, len(h.report.Skipped)),
+		Engine:      h.engine != nil,
+		Predictions: h.predictor != nil,
+	}
 	for _, s := range h.report.Skipped {
 		body.Skipped = append(body.Skipped, skipped{Number: s.Number, Reason: s.Reason})
 	}
@@ -70,7 +99,7 @@ func (h *handler) players(w http.ResponseWriter, r *http.Request) {
 		Items []playerDTO `json:"items"`
 	}{Total: len(players), Items: make([]playerDTO, 0, min(limit, len(players)))}
 	for _, player := range players[:min(limit, len(players))] {
-		body.Items = append(body.Items, playerDTO{Name: player.Name, Games: player.Games})
+		body.Items = append(body.Items, playerDTO{Name: player.Name, Games: player.Games, Rating: player.Rating})
 	}
 	writeJSON(w, http.StatusOK, body)
 }

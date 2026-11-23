@@ -1,5 +1,16 @@
 PGN ?= testdata/sample.pgn
 
+# The Maia model runs through ONNX Runtime, which is C code, so building needs
+# a working C linker. On Macs where the Command Line Tools default to an SDK
+# newer than the installed linker understands, linking fails with "unknown
+# architecture" errors; the unversioned MacOSX.sdk link is the matching one.
+# Running "go build" or "go test" directly needs the same SDKROOT.
+ifeq ($(shell uname),Darwin)
+ifneq ($(wildcard /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk),)
+export SDKROOT ?= /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+endif
+endif
+
 .PHONY: test web build run dev
 
 test:

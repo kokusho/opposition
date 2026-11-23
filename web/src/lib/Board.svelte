@@ -6,18 +6,18 @@
   import '@lichess-org/chessground/assets/chessground.base.css'
   import '@lichess-org/chessground/assets/chessground.brown.css'
   import '@lichess-org/chessground/assets/chessground.cburnett.css'
-  import type { Color, Move } from './api'
+  import type { Color, Playable } from './api'
 
   interface Props {
     /** Position to show. Only the piece placement field of the key is used. */
     position: string
     orientation: Color
     sideToMove: Color
-    /** Moves known from this position. Only these can be played on the board. */
-    moves: Move[]
+    /** The moves that can be played on the board from this position. */
+    moves: Playable[]
     /** UCI of the move that led here, for highlighting. */
     lastMove?: string
-    onmove: (move: Move) => void
+    onmove: (move: Playable) => void
   }
 
   let { position, orientation, sideToMove, moves, lastMove, onmove }: Props = $props()
@@ -43,7 +43,12 @@
       draggable: { showGhost: true },
       events: {
         move: (from, to) => {
-          const played = moves.find((move) => move.uci.startsWith(from + to))
+          // A pawn reaching the last rank has four moves with these squares;
+          // the board has no piece picker, so it promotes to a queen.
+          const played =
+            moves.find((move) => move.uci === from + to) ??
+            moves.find((move) => move.uci === from + to + 'q') ??
+            moves.find((move) => move.uci.startsWith(from + to))
           if (played) onmove(played)
         },
       },

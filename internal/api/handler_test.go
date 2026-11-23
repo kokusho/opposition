@@ -35,8 +35,14 @@ type problem struct {
 }
 
 // sampleAPIWith serves testdata/sample.pgn with the clock fixed to 2026-11-23
-// and the given engine (nil for none).
+// and the given engine (nil for none), without a move predictor.
 func sampleAPIWith(t *testing.T, engine core.Evaluator) http.Handler {
+	t.Helper()
+	return sampleAPIFull(t, engine, nil)
+}
+
+// sampleAPIFull is sampleAPIWith plus a move predictor (nil for none).
+func sampleAPIFull(t *testing.T, engine core.Evaluator, predictor core.Predictor) http.Handler {
 	t.Helper()
 	file, err := os.Open("../../testdata/sample.pgn")
 	if err != nil {
@@ -48,7 +54,7 @@ func sampleAPIWith(t *testing.T, engine core.Evaluator) http.Handler {
 		t.Fatal(err)
 	}
 	now := func() time.Time { return time.Date(2026, time.November, 23, 0, 0, 0, 0, time.UTC) }
-	return api.NewHandler(games, report, now, engine)
+	return api.NewHandler(api.Config{Games: games, Report: report, Now: now, Engine: engine, Predictor: predictor})
 }
 
 // sampleAPI serves the sample database without a chess engine.
@@ -102,7 +108,7 @@ func TestDatabaseReportsWhatWasLoaded(t *testing.T) {
 func TestPlayersSearchReturnsMatchingNamesWithGameCounts(t *testing.T) {
 	recorder := get(t, sampleAPI(t), "/api/v1/players", url.Values{"query": {"PETRO"}})
 
-	want := `{"total":1,"items":[{"name":"Petrov, Ivan","games":12}]}`
+	want := `{"total":1,"items":[{"name":"Petrov, Ivan","games":12,"rating":2105}]}`
 	if got := recorder.Body.String(); recorder.Code != http.StatusOK || got != want+"\n" {
 		t.Errorf("status %d, body %s; want 200 and %s", recorder.Code, got, want)
 	}

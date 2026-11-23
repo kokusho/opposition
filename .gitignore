@@ -5,3 +5,5 @@ internal/webui/dist/*
 .claude/settings.local.json
 .DS_Store
 *.tsbuildinfo
+.maia3/
+models/

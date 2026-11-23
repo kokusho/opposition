@@ -52,11 +52,14 @@ type Ply struct {
 
 // Game is one game from the database, reduced to what the tree needs.
 type Game struct {
-	White  string
-	Black  string
-	Date   time.Time
-	Result Result
-	Plies  []Ply
+	White string
+	Black string
+	// WhiteElo and BlackElo are the players' ratings, 0 if unknown.
+	WhiteElo int
+	BlackElo int
+	Date     time.Time
+	Result   Result
+	Plies    []Ply
 }
 
 // Player returns the name of the player with the given colour.

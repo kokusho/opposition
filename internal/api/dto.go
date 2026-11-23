@@ -31,6 +31,8 @@ type moveDTO struct {
 type playerDTO struct {
 	Name  string `json:"name"`
 	Games int    `json:"games"`
+	// Rating is from the player's most recent game that states one.
+	Rating int `json:"rating,omitempty"`
 }
 
 func toNodeDTO(position string, myColor core.Color, node core.Node) nodeDTO {
