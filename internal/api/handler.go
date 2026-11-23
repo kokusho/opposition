@@ -23,16 +23,21 @@ type handler struct {
 	games  []core.Game
 	report pgn.Report
 	now    func() time.Time
+	engine core.Evaluator // nil when no engine is available
+	scans  *scans
 }
 
 // NewHandler serves the API for one loaded database. now supplies the date
-// that game ages are measured from.
-func NewHandler(games []core.Game, report pgn.Report, now func() time.Time) http.Handler {
-	h := &handler{games: games, report: report, now: now}
+// that game ages are measured from. engine may be nil, in which case the
+// endpoints that need one answer 503.
+func NewHandler(games []core.Game, report pgn.Report, now func() time.Time, engine core.Evaluator) http.Handler {
+	h := &handler{games: games, report: report, now: now, engine: engine, scans: newScans()}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/database", h.database)
 	mux.HandleFunc("GET /api/v1/players", h.players)
 	mux.HandleFunc("GET /api/v1/tree", h.tree)
+	mux.HandleFunc("GET /api/v1/analysis", h.analysis)
+	mux.HandleFunc("GET /api/v1/mistakes", h.mistakes)
 	return mux
 }
 
@@ -44,7 +49,9 @@ func (h *handler) database(w http.ResponseWriter, _ *http.Request) {
 	body := struct {
 		Games   int       `json:"games"`
 		Skipped []skipped `json:"skipped"`
-	}{Games: h.report.Games, Skipped: make([]skipped, 0, len(h.report.Skipped))}
+		// Engine says whether evaluations and the mistake scan are available.
+		Engine bool `json:"engine"`
+	}{Games: h.report.Games, Skipped: make([]skipped, 0, len(h.report.Skipped)), Engine: h.engine != nil}
 	for _, s := range h.report.Skipped {
 		body.Skipped = append(body.Skipped, skipped{Number: s.Number, Reason: s.Reason})
 	}
@@ -52,14 +59,9 @@ func (h *handler) database(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *handler) players(w http.ResponseWriter, r *http.Request) {
-	limit := defaultPlayerLimit
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 1 {
-			badRequest(w, fmt.Sprintf("limit must be a positive whole number, got %q", raw))
-			return
-		}
-		limit = parsed
+	limit, ok := positiveInt(w, r, "limit", defaultPlayerLimit)
+	if !ok {
+		return
 	}
 
 	players := core.Players(h.games, r.URL.Query().Get("query"))
@@ -74,49 +76,87 @@ func (h *handler) players(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) tree(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-
-	opponent := query.Get("opponent")
-	if opponent == "" {
-		badRequest(w, "opponent is required: the player's name as it appears in the database")
+	sel, ok := h.selection(w, r)
+	if !ok {
 		return
 	}
+	node := h.treeFor(sel).Node(sel.position)
+	writeJSON(w, http.StatusOK, toNodeDTO(sel.position, sel.myColor, node))
+}
 
-	var myColor core.Color
+// selection is what every tree-based endpoint is asked about: whose games,
+// seen from which side, weighted how, at which position.
+type selection struct {
+	opponent      string
+	myColor       core.Color
+	halfLifeYears float64
+	position      string
+}
+
+// selection reads and checks the common query parameters. On a problem it
+// writes the error response and returns false.
+func (h *handler) selection(w http.ResponseWriter, r *http.Request) (selection, bool) {
+	query := r.URL.Query()
+	sel := selection{
+		opponent:      query.Get("opponent"),
+		halfLifeYears: defaultHalfLifeYears,
+		position:      query.Get("position"),
+	}
+
+	if sel.opponent == "" {
+		badRequest(w, "opponent is required: the player's name as it appears in the database")
+		return sel, false
+	}
+
 	switch raw := query.Get("myColor"); raw {
 	case "white":
-		myColor = core.White
+		sel.myColor = core.White
 	case "black":
-		myColor = core.Black
+		sel.myColor = core.Black
 	default:
 		badRequest(w, fmt.Sprintf("myColor must be \"white\" or \"black\", got %q", raw))
-		return
+		return sel, false
 	}
 
-	halfLifeYears := float64(defaultHalfLifeYears)
 	if raw := query.Get("halfLifeYears"); raw != "" {
 		parsed, err := strconv.ParseFloat(raw, 64)
 		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed < 0 {
 			badRequest(w, fmt.Sprintf("halfLifeYears must be a number of years, 0 or more, got %q", raw))
-			return
+			return sel, false
 		}
-		halfLifeYears = parsed
+		sel.halfLifeYears = parsed
 	}
 
-	position := query.Get("position")
-	if position == "" {
-		position = core.StartPosition
+	if sel.position == "" {
+		sel.position = core.StartPosition
 	}
 
-	if !h.knows(opponent) {
+	if !h.knows(sel.opponent) {
 		writeProblem(w, http.StatusNotFound, "Player not found",
-			fmt.Sprintf("no game in the database has a player named %q", opponent))
-		return
+			fmt.Sprintf("no game in the database has a player named %q", sel.opponent))
+		return sel, false
 	}
+	return sel, true
+}
 
-	opts := core.TreeOptions{Now: h.now(), HalfLife: time.Duration(halfLifeYears * float64(year))}
-	node := core.BuildTree(h.games, opponent, myColor.Opposite(), opts).Node(position)
-	writeJSON(w, http.StatusOK, toNodeDTO(position, myColor, node))
+func (h *handler) treeFor(sel selection) *core.Tree {
+	opts := core.TreeOptions{Now: h.now(), HalfLife: time.Duration(sel.halfLifeYears * float64(year))}
+	return core.BuildTree(h.games, sel.opponent, sel.myColor.Opposite(), opts)
+}
+
+// positiveInt reads an optional whole-number query parameter of at least 1.
+// On a problem it writes the error response and returns false.
+func positiveInt(w http.ResponseWriter, r *http.Request, name string, fallback int) (int, bool) {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return fallback, true
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed < 1 {
+		badRequest(w, fmt.Sprintf("%s must be a positive whole number, got %q", name, raw))
+		return 0, false
+	}
+	return parsed, true
 }
 
 func (h *handler) knows(player string) bool {

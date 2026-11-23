@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"opposition/internal/api"
+	"opposition/internal/core"
 	"opposition/internal/pgn"
 )
 
@@ -33,8 +34,9 @@ type problem struct {
 	Status int    `json:"status"`
 }
 
-// sampleAPI serves testdata/sample.pgn with the clock fixed to 2026-11-23.
-func sampleAPI(t *testing.T) http.Handler {
+// sampleAPIWith serves testdata/sample.pgn with the clock fixed to 2026-11-23
+// and the given engine (nil for none).
+func sampleAPIWith(t *testing.T, engine core.Evaluator) http.Handler {
 	t.Helper()
 	file, err := os.Open("../../testdata/sample.pgn")
 	if err != nil {
@@ -46,7 +48,13 @@ func sampleAPI(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	now := func() time.Time { return time.Date(2026, time.November, 23, 0, 0, 0, 0, time.UTC) }
-	return api.NewHandler(games, report, now)
+	return api.NewHandler(games, report, now, engine)
+}
+
+// sampleAPI serves the sample database without a chess engine.
+func sampleAPI(t *testing.T) http.Handler {
+	t.Helper()
+	return sampleAPIWith(t, nil)
 }
 
 func get(t *testing.T, handler http.Handler, path string, query url.Values) *httptest.ResponseRecorder {

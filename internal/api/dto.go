@@ -1,10 +1,6 @@
 package api
 
-import (
-	"strings"
-
-	"opposition/internal/core"
-)
+import "opposition/internal/core"
 
 type nodeDTO struct {
 	Position string `json:"position"`
@@ -38,7 +34,7 @@ type playerDTO struct {
 }
 
 func toNodeDTO(position string, myColor core.Color, node core.Node) nodeDTO {
-	side := sideToMove(position)
+	side := core.SideToMove(position)
 	mover := "opponent"
 	if side == myColor {
 		mover = "you"
@@ -77,15 +73,6 @@ func toMoveDTO(move core.MoveStat) moveDTO {
 		dto.LastPlayed = &date
 	}
 	return dto
-}
-
-// sideToMove reads the side to move from a position key (its second field).
-func sideToMove(position string) core.Color {
-	fields := strings.Fields(position)
-	if len(fields) > 1 && fields[1] == "b" {
-		return core.Black
-	}
-	return core.White
 }
 
 func colorName(c core.Color) string {
