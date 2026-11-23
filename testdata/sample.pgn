@@ -1,0 +1,128 @@
+[Event "City Open"]
+[Site "Hamburg"]
+[Date "2026.03.14"]
+[Round "1"]
+[White "Brandt, Jonas"]
+[Black "Petrov, Ivan"]
+[Result "0-1"]
+[WhiteElo "2010"]
+[BlackElo "2105"]
+
+1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Be3 e5 7. Nb3 Be6 8. f3
+Be7 9. Qd2 O-O 10. O-O-O Nbd7 0-1
+
+[Event "City Open"]
+[Site "Hamburg"]
+[Date "2026.03.15"]
+[Round "3"]
+[White "Keller, Anna"]
+[Black "Petrov, Ivan"]
+[Result "1/2-1/2"]
+
+1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Bg5 e6 7. f4 Be7 8. Qf3
+Qc7 9. O-O-O Nbd7 1/2-1/2
+
+[Event "League"]
+[Site "Bremen"]
+[Date "2025.10.05"]
+[Round "2"]
+[White "Schmidt, Lars"]
+[Black "Petrov, Ivan"]
+[Result "1-0"]
+
+1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Be2 e5 7. Nb3 Be7 8. O-O
+O-O 1-0
+
+[Event "League"]
+[Site "Bremen"]
+[Date "2025.02.09"]
+[Round "5"]
+[White "Weber, Tim"]
+[Black "Petrov, Ivan"]
+[Result "1-0"]
+
+1. e4 c5 2. c3 d5 3. exd5 Qxd5 4. d4 Nf6 5. Nf3 Bg4 6. Be2 e6 7. h3 Bh5 8. O-O
+Nc6 1-0
+
+[Event "Winter Open"]
+[Site "Kiel"]
+[Date "2024.01.20"]
+[Round "4"]
+[White "Novak, Petr"]
+[Black "Petrov, Ivan"]
+[Result "1-0"]
+
+1. e4 c5 2. c3 d5 3. exd5 Qxd5 4. d4 Nf6 5. Nf3 Bg4 6. Be2 e6 7. O-O Nc6 8. Be3
+cxd4 9. cxd4 Be7 1-0
+
+[Event "Club Championship"]
+[Site "Hamburg"]
+[Date "2019.??.??"]
+[Round "?"]
+[White "Meier, Karl"]
+[Black "Petrov, Ivan"]
+[Result "1/2-1/2"]
+
+1. e4 c5 2. Nc3 Nc6 3. g3 g6 4. Bg2 Bg7 5. d3 d6 6. Be3 e6 7. Qd2 Nge7 1/2-1/2
+
+[Event "City Open"]
+[Site "Hamburg"]
+[Date "2026.03.16"]
+[Round "5"]
+[White "Hoffmann, Eva"]
+[Black "Petrov, Ivan"]
+[Result "0-1"]
+
+1. d4 Nf6 2. c4 g6 3. Nc3 Bg7 4. e4 d6 5. Nf3 O-O 6. Be2 e5 7. O-O Nc6 8. d5
+Ne7 0-1
+
+[Event "Rapid"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Lang, Felix"]
+[Black "Petrov, Ivan"]
+[Result "1/2-1/2"]
+
+1. Nf3 Nf6 2. c4 g6 3. Nc3 Bg7 4. e4 d6 5. d4 O-O 6. Be2 e5 7. O-O Nc6 8. d5
+Ne7 9. Ne1 Nd7 1/2-1/2
+
+[Event "City Open"]
+[Site "Hamburg"]
+[Date "2026.03.14"]
+[Round "2"]
+[White "Petrov, Ivan"]
+[Black "Krause, Maria"]
+[Result "1-0"]
+
+1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Bg5 Be7 5. e3 O-O 6. Nf3 h6 7. Bh4 b6 1-0
+
+[Event "League"]
+[Site "Bremen"]
+[Date "2025.11.02"]
+[Round "3"]
+[White "Petrov, Ivan"]
+[Black "Vogel, Stefan"]
+[Result "1/2-1/2"]
+
+1. d4 Nf6 2. c4 e6 3. Nf3 b6 4. g3 Ba6 5. b3 Bb4+ 6. Bd2 Be7 1/2-1/2
+
+[Event "League"]
+[Site "Bremen"]
+[Date "2025.03.09"]
+[Round "6"]
+[White "Petrov, Ivan"]
+[Black "Schmidt, Lars"]
+[Result "1-0"]
+
+1. d4 d5 2. c4 c6 3. Nf3 Nf6 4. Nc3 e6 5. e3 Nbd7 6. Bd3 dxc4 7. Bxc4 b5 1-0
+
+[Event "Winter Open"]
+[Site "Kiel"]
+[Date "2024.01.21"]
+[Round "6"]
+[White "Petrov, Ivan"]
+[Black "Brandt, Jonas"]
+[Result "0-1"]
+
+1. c4 e5 2. Nc3 Nf6 3. Nf3 Nc6 4. g3 d5 5. cxd5 Nxd5 6. Bg2 Nb6 0-1

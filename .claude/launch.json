@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "opposition",
+      "runtimeExecutable": "./bin/opposition",
+      "runtimeArgs": ["-pgn", "testdata/sample.pgn"],
+      "port": 8080
+    }
+  ]
+}
