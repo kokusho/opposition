@@ -27,3 +27,9 @@ type Prediction struct {
 type Predictor interface {
 	Predict(ctx context.Context, position string, selfElo, oppoElo int) (Prediction, error)
 }
+
+// Narrator turns the facts of a prep report into prose, typically by asking
+// a language model. facts is plain text; the narrator must not add to it.
+type Narrator interface {
+	Narrate(ctx context.Context, facts string) (string, error)
+}

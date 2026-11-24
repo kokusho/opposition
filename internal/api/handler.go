@@ -31,26 +31,32 @@ type Config struct {
 	// Predictor guesses human moves. Nil means no model: the predictions
 	// endpoint answers 503.
 	Predictor core.Predictor
+	// Narrator writes the prep report up in prose. Nil means no write-up.
+	Narrator core.Narrator
 }
 
 type handler struct {
-	games     []core.Game
-	report    pgn.Report
-	now       func() time.Time
-	engine    core.Evaluator
-	predictor core.Predictor
-	scans     *scans
+	games        []core.Game
+	report       pgn.Report
+	now          func() time.Time
+	engine       core.Evaluator
+	predictor    core.Predictor
+	narrator     core.Narrator
+	mistakeScans *scans[scanDTO]
+	reports      *scans[reportState]
 }
 
 // NewHandler serves the API for one loaded database.
 func NewHandler(config Config) http.Handler {
 	h := &handler{
-		games:     config.Games,
-		report:    config.Report,
-		now:       config.Now,
-		engine:    config.Engine,
-		predictor: config.Predictor,
-		scans:     newScans(),
+		games:        config.Games,
+		report:       config.Report,
+		now:          config.Now,
+		engine:       config.Engine,
+		predictor:    config.Predictor,
+		narrator:     config.Narrator,
+		mistakeScans: newScans(func(state scanDTO) bool { return state.Status == "done" }),
+		reports:      newScans(func(state reportState) bool { return state.Status == "done" }),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/database", h.database)
@@ -60,6 +66,8 @@ func NewHandler(config Config) http.Handler {
 	mux.HandleFunc("GET /api/v1/analysis", h.analysis)
 	mux.HandleFunc("GET /api/v1/mistakes", h.mistakes)
 	mux.HandleFunc("GET /api/v1/predictions", h.predictions)
+	mux.HandleFunc("GET /api/v1/report", h.prepReport)
+	mux.HandleFunc("POST /api/v1/report/narrative", h.narrative)
 	return mux
 }
 
@@ -75,11 +83,14 @@ func (h *handler) database(w http.ResponseWriter, _ *http.Request) {
 		Engine bool `json:"engine"`
 		// Predictions says whether human-move predictions are available.
 		Predictions bool `json:"predictions"`
+		// Narrative says whether the report can be written up in prose.
+		Narrative bool `json:"narrative"`
 	}{
 		Games:       h.report.Games,
 		Skipped:     make([]skipped, 0, len(h.report.Skipped)),
 		Engine:      h.engine != nil,
 		Predictions: h.predictor != nil,
+		Narrative:   h.narrator != nil,
 	}
 	for _, s := range h.report.Skipped {
 		body.Skipped = append(body.Skipped, skipped{Number: s.Number, Reason: s.Reason})

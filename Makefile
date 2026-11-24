@@ -11,7 +11,7 @@ export SDKROOT ?= /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
 endif
 endif
 
-.PHONY: test web build run dev
+.PHONY: test web build run dev models
 
 test:
 	go test ./...
@@ -19,6 +19,11 @@ test:
 
 web:
 	cd web && npm install && npm run build
+
+# Download the Maia-3 model for move predictions (312 MB). Other sizes:
+# tools/fetch-models.sh 5m 23m
+models:
+	tools/fetch-models.sh
 
 build: web
 	go build -o bin/opposition ./cmd/opposition

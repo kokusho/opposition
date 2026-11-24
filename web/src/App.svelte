@@ -1,9 +1,10 @@
 <script lang="ts">
   import Board from './lib/Board.svelte'
+  import Report from './lib/Report.svelte'
+  import { month, numbered, pawns, percent } from './lib/format'
   import {
     fetchAnalysis,
     fetchDatabase,
-    fetchMistakes,
     fetchMoves,
     fetchNode,
     fetchPredictions,
@@ -12,11 +13,9 @@
     type Color,
     type Database,
     type LegalMoves,
-    type Mistake,
     type Playable,
     type Player,
     type Prediction,
-    type Scan,
     type Step,
     type TreeNode,
   } from './lib/api'
@@ -55,8 +54,9 @@
   let line = $state<Step[]>([])
   let node = $state<TreeNode>()
   let analysis = $state<Analysis>()
-  let scan = $state<Scan>()
-  let scanning = $state(false)
+  let view = $state<'explore' | 'report'>('explore')
+  // The ratings the report is built for, updated once typing has paused.
+  let reportRatings = $state<{ theirs: number; mine: number }>()
   let legal = $state<LegalMoves>()
   let prediction = $state<Prediction>()
   let theirRating = $state(1500)
@@ -164,41 +164,12 @@
     return () => (stale = true)
   })
 
-  // A scan belongs to one opponent, colour and half-life. Changing any of
-  // them drops it; while one is running, poll for its progress.
+  // Every change of the ratings would start a new report, so wait until the
+  // typing has paused.
   $effect(() => {
-    void [opponent, myColor, halfLifeYears]
-    scan = undefined
-    scanning = false
-  })
-
-  $effect(() => {
-    if (!scanning || !opponent) return
-    const args = [opponent.name, myColor, halfLifeYears] as const
-    let stale = false
-    let timer: ReturnType<typeof setTimeout>
-    const poll = () =>
-      fetchMistakes(...args).then(
-        (state) => {
-          if (stale) return
-          scan = state
-          if (state.status === 'running') {
-            timer = setTimeout(poll, 700)
-          } else {
-            scanning = false
-          }
-        },
-        (reason) => {
-          if (stale) return
-          error = reason.message
-          scanning = false
-        },
-      )
-    poll()
-    return () => {
-      stale = true
-      clearTimeout(timer)
-    }
+    const next = ratingsUsable ? { theirs: theirRating, mine: myRating } : undefined
+    const timer = setTimeout(() => (reportRatings = next), 600)
+    return () => clearTimeout(timer)
   })
 
   function choose(player: Player) {
@@ -237,26 +208,12 @@
     line = line.slice(0, length)
   }
 
-  function show(mistake: Mistake) {
-    line = mistake.line
+  /** Opens a line from the report on the board. */
+  function showLine(steps: Step[]) {
+    line = steps
+    view = 'explore'
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
-
-  /** "1. e4" for White's moves, "1... c5" for Black's. */
-  function numbered(ply: number, san: string, always = false): string {
-    const number = Math.floor(ply / 2) + 1
-    if (ply % 2 === 0) return `${number}. ${san}`
-    return always ? `${number}... ${san}` : san
-  }
-
-  /** A run of moves as text, starting at the given half-move. */
-  function moveText(sans: string[], firstPly: number): string {
-    return sans.map((san, index) => numbered(firstPly + index, san, index === 0)).join(' ')
-  }
-
-  const percent = (fraction: number) => `${Math.round(fraction * 100)}%`
-  const month = (date?: string) => date?.slice(0, 7) ?? ''
-  const pawns = (centipawns: number) => (centipawns / 100).toFixed(1)
 </script>
 
 <header>
@@ -345,6 +302,23 @@
 {/if}
 
 {#if opponent && node}
+  <nav class="views" aria-label="View">
+    <button class:active={view === 'explore'} onclick={() => (view = 'explore')}>Explore</button>
+    <button class:active={view === 'report'} onclick={() => (view = 'report')}>Prep report</button>
+  </nav>
+{/if}
+
+{#if opponent && view === 'report' && database}
+  <Report
+    {opponent}
+    {myColor}
+    {halfLifeYears}
+    theirElo={database.predictions ? reportRatings?.theirs : undefined}
+    myElo={database.predictions ? reportRatings?.mine : undefined}
+    {database}
+    onshow={showLine}
+  />
+{:else if opponent && node}
   <main>
     <div class="board-column">
       <Board
@@ -522,69 +496,6 @@
     </div>
   </main>
 
-  {#if database?.engine}
-    <section class="mistakes">
-      <div class="mistakes-head">
-        <h2>Recurring mistakes</h2>
-        {#if !scan && !scanning}
-          <button class="primary" onclick={() => (scanning = true)}>Scan {surname}'s habits</button>
-        {/if}
-      </div>
-
-      {#if !scan && !scanning}
-        <p class="muted">
-          Checks every move {opponent.name} has played at least twice as {opponentColor} with the
-          engine and lists the ones that give away half a pawn or more.
-        </p>
-      {:else if !scan || scan.status === 'running'}
-        <p class="muted">
-          Checked {scan?.done ?? 0} of {scan?.total ?? '…'} habitual moves
-        </p>
-        <progress value={scan?.done ?? 0} max={scan?.total || 1}></progress>
-      {:else if scan.status === 'failed'}
-        <p class="error" role="alert">The scan failed: {scan.error}</p>
-      {:else if scan.items.length === 0}
-        <p>
-          None found among {scan.total} habitual moves. Either {opponent.name} knows these lines, or
-          the database has too few of their games to show a pattern.
-        </p>
-      {:else}
-        <p class="muted">
-          {scan.items.length} of {scan.total} habitual moves give away half a pawn or more. Most
-          reliable and most costly first.
-        </p>
-        <ol>
-          {#each scan.items as mistake (mistake.position + mistake.move.uci)}
-            <li>
-              <button class="mistake" onclick={() => show(mistake)}>
-                <span class="mistake-line">
-                  {moveText(mistake.line.map((step) => step.san), 0)}
-                  <strong>{numbered(mistake.line.length, mistake.move.san, mistake.line.length === 0)}?</strong>
-                </span>
-                <span class="mistake-facts">
-                  <span class="badge gift">gives away {pawns(mistake.loss)}</span>
-                  <span>
-                    played in {mistake.move.games} of {mistake.nodeGames} games ({percent(mistake.move.share)})
-                  </span>
-                  {#if mistake.best}
-                    <span class="muted">
-                      engine prefers {numbered(mistake.line.length, mistake.best, true)}
-                    </span>
-                  {/if}
-                </span>
-                {#if mistake.refutation.length}
-                  <span class="mistake-reply">
-                    You continue {moveText(mistake.refutation, mistake.line.length + 1)}
-                    <strong class="eval good">{mistake.eval.text}</strong>
-                  </span>
-                {/if}
-              </button>
-            </li>
-          {/each}
-        </ol>
-      {/if}
-    </section>
-  {/if}
 {:else if !error}
   <p class="muted empty">Pick your opponent and your colour to see what they play.</p>
 {/if}

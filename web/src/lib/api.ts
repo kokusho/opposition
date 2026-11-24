@@ -7,6 +7,8 @@ export interface Database {
   engine: boolean
   /** Whether human-move predictions (Maia) are available. */
   predictions: boolean
+  /** Whether a language model can write the report up. */
+  narrative: boolean
 }
 
 export interface Player {
@@ -124,9 +126,90 @@ export interface Scan {
   items: Mistake[]
 }
 
-async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+/** A line of moves the opponent's games followed repeatedly, with their results. */
+export interface MainLine {
+  line: Step[]
+  games: number
+  wins: number
+  draws: number
+  losses: number
+  score?: number
+}
+
+/** A move the opponent faced and scored badly against. */
+export interface WeakSpot {
+  /** Moves leading to the position where you move. */
+  line: Step[]
+  position: string
+  move: Move
+}
+
+/** A predicted answer of the opponent to a trap move. */
+export interface TrapReply extends Playable {
+  probability: number
+  /** Centipawns the reply gives away. */
+  loss: number
+  /** The position after the reply, from your point of view. */
+  eval: Eval
+  /** The engine's answer to the reply. */
+  punish?: string
+}
+
+/** A sound move of yours after which a player of their rating often goes wrong. */
+export interface Trap {
+  /** Moves leading to the position where you move. */
+  line: Step[]
+  position: string
+  /** How many of their games reached that position. */
+  games: number
+  move: Step
+  /** How often they faced the move; 0 means the engine suggested it. */
+  facedGames: number
+  ownLoss: number
+  /** The position after your move, from your point of view. */
+  eval: Eval
+  /** Probability that their reply loses a pawn or more. */
+  errorChance: number
+  expectedLoss: number
+  replies: TrapReply[]
+}
+
+export interface Report {
+  opponent: string
+  myColor: Color
+  theirElo: number
+  myElo: number
+  summary: {
+    games: number
+    wins: number
+    draws: number
+    losses: number
+    score?: number
+    first?: string
+    last?: string
+  }
+  mainLines: MainLine[]
+  weakSpots: WeakSpot[]
+  /** Null without a chess engine. */
+  mistakes: Mistake[] | null
+  /** Null without both a chess engine and a prediction model. */
+  traps: Trap[] | null
+}
+
+/** A report as far as it has got; the statistics are there from the start. */
+export interface ReportState {
+  status: 'running' | 'done' | 'failed'
+  /** What the engine is working on. */
+  stage?: 'mistakes' | 'traps'
+  done: number
+  total: number
+  error?: string
+  report: Report
+}
+
+async function get<T>(path: string, params: Record<string, string> = {}, method = 'GET'): Promise<T> {
   const query = new URLSearchParams(params).toString()
-  const response = await fetch(query ? `${path}?${query}` : path)
+  const response = await fetch(query ? `${path}?${query}` : path, { method })
   if (!response.ok) {
     const problem = await response.json().catch(() => null)
     throw new Error(problem?.detail ?? `${path} failed with status ${response.status}`)
@@ -186,4 +269,35 @@ export function fetchMoves(position?: string): Promise<LegalMoves> {
 /** selfElo is the rating of the side to move, oppoElo of the other player. */
 export function fetchPredictions(position: string, selfElo: number, oppoElo: number): Promise<Prediction> {
   return get('/api/v1/predictions', { position, selfElo: String(selfElo), oppoElo: String(oppoElo) })
+}
+
+function reportParams(opponent: string, myColor: Color, halfLifeYears: number, theirElo?: number, myElo?: number) {
+  const params: Record<string, string> = { opponent, myColor, halfLifeYears: String(halfLifeYears) }
+  if (theirElo) params.theirElo = String(theirElo)
+  if (myElo) params.myElo = String(myElo)
+  return params
+}
+
+/** Starts the report on the first call and returns its progress on later ones. */
+export function fetchReport(
+  opponent: string,
+  myColor: Color,
+  halfLifeYears: number,
+  theirElo?: number,
+  myElo?: number,
+): Promise<ReportState> {
+  return get('/api/v1/report', reportParams(opponent, myColor, halfLifeYears, theirElo, myElo))
+}
+
+/** Has the language model write up a finished report. */
+export async function fetchNarrative(
+  opponent: string,
+  myColor: Color,
+  halfLifeYears: number,
+  theirElo?: number,
+  myElo?: number,
+): Promise<string> {
+  const params = reportParams(opponent, myColor, halfLifeYears, theirElo, myElo)
+  const body = await get<{ text: string }>('/api/v1/report/narrative', params, 'POST')
+  return body.text
 }

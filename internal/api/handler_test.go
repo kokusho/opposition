@@ -44,6 +44,15 @@ func sampleAPIWith(t *testing.T, engine core.Evaluator) http.Handler {
 // sampleAPIFull is sampleAPIWith plus a move predictor (nil for none).
 func sampleAPIFull(t *testing.T, engine core.Evaluator, predictor core.Predictor) http.Handler {
 	t.Helper()
+	return sampleAPIConfigured(t, func(config *api.Config) {
+		config.Engine, config.Predictor = engine, predictor
+	})
+}
+
+// sampleAPIConfigured serves the sample database with whatever the given
+// function adds to the configuration.
+func sampleAPIConfigured(t *testing.T, configure func(config *api.Config)) http.Handler {
+	t.Helper()
 	file, err := os.Open("../../testdata/sample.pgn")
 	if err != nil {
 		t.Fatal(err)
@@ -53,8 +62,35 @@ func sampleAPIFull(t *testing.T, engine core.Evaluator, predictor core.Predictor
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := func() time.Time { return time.Date(2026, time.November, 23, 0, 0, 0, 0, time.UTC) }
-	return api.NewHandler(api.Config{Games: games, Report: report, Now: now, Engine: engine, Predictor: predictor})
+	config := api.Config{
+		Games:  games,
+		Report: report,
+		Now:    func() time.Time { return time.Date(2026, time.November, 23, 0, 0, 0, 0, time.UTC) },
+	}
+	configure(&config)
+	return api.NewHandler(config)
+}
+
+// newServer runs the handler on a local port for tests that need a real
+// HTTP client, and returns its base URL.
+func newServer(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+// decodeBody is decode for a response from a real HTTP client.
+func decodeBody[T any](t *testing.T, response *http.Response, wantStatus int) T {
+	t.Helper()
+	var value T
+	if response.StatusCode != wantStatus {
+		t.Fatalf("status = %d, want %d", response.StatusCode, wantStatus)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	return value
 }
 
 // sampleAPI serves the sample database without a chess engine.

@@ -42,16 +42,12 @@ func SideToMove(position string) Color {
 // move orders lead to is reported once, by the first route found.
 func (t *Tree) Candidates(opponentColor Color, opts ScanOptions) []Candidate {
 	var candidates []Candidate
-	visited := map[string]bool{}
-	var walk func(position string, line []Step)
-	walk = func(position string, line []Step) {
-		if len(line) >= opts.MaxPlies || visited[position] {
+	t.walk(opts.MaxPlies, func(position string, line []Step, node Node) {
+		if SideToMove(position) != opponentColor {
 			return
 		}
-		visited[position] = true
-		node := t.Node(position)
 		for _, move := range node.Moves {
-			if SideToMove(position) == opponentColor && move.Games >= opts.MinGames {
+			if move.Games >= opts.MinGames {
 				candidates = append(candidates, Candidate{
 					Line:      line,
 					Position:  position,
@@ -59,10 +55,52 @@ func (t *Tree) Candidates(opponentColor Color, opts ScanOptions) []Candidate {
 					Move:      move,
 				})
 			}
+		}
+	})
+	return candidates
+}
+
+// Turn is a position inside the opponent's repertoire where it is your move.
+type Turn struct {
+	// Line leads from the start to Position.
+	Line     []Step
+	Position string
+	// Games is the number of the opponent's games that reached Position.
+	Games int
+	// Moves is what the opponent has faced here.
+	Moves []MoveStat
+}
+
+// MyTurns collects the positions where the side with myColor is to move and
+// which the opponent reached in at least opts.MinGames games, most played
+// lines first.
+func (t *Tree) MyTurns(myColor Color, opts ScanOptions) []Turn {
+	var turns []Turn
+	t.walk(opts.MaxPlies, func(position string, line []Step, node Node) {
+		if SideToMove(position) == myColor && node.Games >= opts.MinGames {
+			turns = append(turns, Turn{Line: line, Position: position, Games: node.Games, Moves: node.Moves})
+		}
+	})
+	return turns
+}
+
+// walk visits every position reachable from the start within maxPlies
+// half-moves, each once, following the most played moves first. line is the
+// route by which the position was first found.
+func (t *Tree) walk(maxPlies int, visit func(position string, line []Step, node Node)) {
+	visited := map[string]bool{}
+	var step func(position string, line []Step)
+	step = func(position string, line []Step) {
+		if len(line) >= maxPlies || visited[position] {
+			return
+		}
+		visited[position] = true
+		node := t.Node(position)
+		visit(position, line, node)
+		for _, move := range node.Moves {
 			next := append(line[:len(line):len(line)], Step{SAN: move.SAN, UCI: move.UCI, Position: move.After})
-			walk(move.After, next)
+			step(move.After, next)
 		}
 	}
-	walk(StartPosition, nil)
-	return candidates
+	step(StartPosition, nil)
 }

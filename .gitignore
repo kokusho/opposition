@@ -7,3 +7,4 @@ internal/webui/dist/*
 *.tsbuildinfo
 .maia3/
 models/
+cache/

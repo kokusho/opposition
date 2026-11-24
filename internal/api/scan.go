@@ -76,29 +76,34 @@ func toMistakeDTO(m core.Mistake) mistakeDTO {
 	return dto
 }
 
-// scans keeps the mistake scans of this process: finished ones as a cache,
-// and at most one that is still running.
-type scans struct {
+// scans keeps the background jobs of one kind: finished ones as a cache, and
+// at most one that is still running. T is the job's state as it is reported
+// to the client.
+type scans[T any] struct {
+	// finished says whether a state is a successful end result worth keeping.
+	finished func(T) bool
+
 	mu      sync.Mutex
-	byKey   map[string]*scan
-	running *scan
+	byKey   map[string]*scan[T]
+	running *scan[T]
 }
 
-type scan struct {
+type scan[T any] struct {
 	cancel context.CancelFunc
 
 	mu    sync.Mutex
-	state scanDTO
+	state T
 }
 
-func newScans() *scans {
-	return &scans{byKey: map[string]*scan{}}
+func newScans[T any](finished func(T) bool) *scans[T] {
+	return &scans[T]{finished: finished, byKey: map[string]*scan[T]{}}
 }
 
-// get returns the scan for key, starting it with run if there is none. A
-// different scan that is still running is cancelled first, so the engine
-// works on what was asked for last.
-func (s *scans) get(key string, run func(ctx context.Context, sc *scan)) *scan {
+// get returns the job for key. If there is none it is created with the state
+// start returns and run is started in the background. A different job that is
+// still running is cancelled first, so the engine works on what was asked for
+// last.
+func (s *scans[T]) get(key string, start func() T, run func(ctx context.Context, sc *scan[T])) *scan[T] {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -110,7 +115,7 @@ func (s *scans) get(key string, run func(ctx context.Context, sc *scan)) *scan {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	sc := &scan{cancel: cancel, state: scanDTO{Status: "running", Items: []mistakeDTO{}}}
+	sc := &scan[T]{cancel: cancel, state: start()}
 	s.byKey[key] = sc
 	s.running = sc
 	go func() {
@@ -122,20 +127,28 @@ func (s *scans) get(key string, run func(ctx context.Context, sc *scan)) *scan {
 		if s.running == sc {
 			s.running = nil
 		}
-		if sc.snapshot().Status != "done" {
+		if !s.finished(sc.snapshot()) {
 			delete(s.byKey, key) // let the next request try again
 		}
 	}()
 	return sc
 }
 
-func (sc *scan) update(change func(state *scanDTO)) {
+// lookup returns the job for key if it exists, without starting one.
+func (s *scans[T]) lookup(key string) (*scan[T], bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sc, ok := s.byKey[key]
+	return sc, ok
+}
+
+func (sc *scan[T]) update(change func(state *T)) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	change(&sc.state)
 }
 
-func (sc *scan) snapshot() scanDTO {
+func (sc *scan[T]) snapshot() T {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	return sc.state
@@ -163,7 +176,8 @@ func (h *handler) mistakes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := fmt.Sprintf("%s|%d|%g|%d|%d|%d", sel.opponent, sel.myColor, sel.halfLifeYears, minGames, minLoss, maxPlies)
-	sc := h.scans.get(key, func(ctx context.Context, sc *scan) {
+	start := func() scanDTO { return scanDTO{Status: "running", Items: []mistakeDTO{}} }
+	sc := h.mistakeScans.get(key, start, func(ctx context.Context, sc *scan[scanDTO]) {
 		opts := core.ScanOptions{MinGames: minGames, MaxPlies: maxPlies}
 		candidates := h.treeFor(sel).Candidates(sel.myColor.Opposite(), opts)
 		sc.update(func(state *scanDTO) { state.Total = len(candidates) })

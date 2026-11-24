@@ -443,3 +443,23 @@ h2 + .table-scroll {
 .tree-column h2:not(:first-of-type) {
   margin-top: 24px;
 }
+
+.views {
+  display: inline-flex;
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.views button {
+  padding: 7px 16px;
+  background: var(--surface);
+  border: 0;
+  cursor: pointer;
+}
+
+.views button.active {
+  background: var(--accent);
+  color: var(--surface);
+}

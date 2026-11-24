@@ -228,9 +228,14 @@ const StartPosition = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"
 // point per win and half a point per draw, divided by the number of finished
 // games. It is unknown (false) when no game with this move has a result.
 func (s MoveStat) Score() (float64, bool) {
-	finished := s.Wins + s.Draws + s.Losses
+	finished := s.finished()
 	if finished == 0 {
 		return 0, false
 	}
 	return (float64(s.Wins) + 0.5*float64(s.Draws)) / float64(finished), true
+}
+
+// finished is the number of games with this move that have a result.
+func (s MoveStat) finished() int {
+	return s.Wins + s.Draws + s.Losses
 }
